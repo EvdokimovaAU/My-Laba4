@@ -1,0 +1,48 @@
+# ===== Visual Studio =====
+.vs/
+*.user
+*.rsuser
+*.suo
+*.userosscache
+*.sln.docstates
+
+# ===== Build results =====
+Debug/
+DebugPublic/
+Release/
+x64/
+x86/
+ARM/
+ARM64/
+bin/
+obj/
+out/
+
+# ===== CMake =====
+CMakeFiles/
+CMakeCache.txt
+cmake_install.cmake
+Makefile
+
+# ===== Visual C++ =====
+*.ipch
+*.iobj
+*.ipdb
+*.pdb
+*.ilk
+*.obj
+*.tlog
+*.log
+
+# ===== NuGet =====
+*.nupkg
+packages/
+.nuget/
+
+# ===== Rider / VS Code (если вдруг) =====
+.idea/
+.vscode/
+
+# ===== OS files =====
+Thumbs.db
+.DS_Store
