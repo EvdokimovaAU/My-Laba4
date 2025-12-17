@@ -1,29 +1,23 @@
 #pragma once
-
 #include <windows.h>
 
 #include "Win32Window.h"
-#include "InputDevice.h"
 #include "GameTimer.h"
 #include "D3D12Context.h"
 
-class Application {
+class Application
+{
 public:
-    explicit Application(HINSTANCE hInstance);
+    Application(HINSTANCE hInstance, int nCmdShow);
 
-    bool Initialize(int nCmdShow);
-    int Run();
-
-private:
-    void Update(const GameTimer& timer);
-    void Draw(const GameTimer& timer);
+    bool Initialize();
+    int  Run();
 
 private:
-    HINSTANCE m_hInstance = nullptr;
+    HINSTANCE   m_hInstance{};
+    int         m_nCmdShow{};
 
-    Win32Window m_window;
-    InputDevice m_input;
-    GameTimer   m_timer;
-
+    Win32Window  m_window;
+    GameTimer    m_timer;
     D3D12Context m_dx12;
 };

@@ -1,23 +1,21 @@
 #pragma once
-#include <windows.h>
+#include <cstdint>
 
-class GameTimer {
+class GameTimer
+{
 public:
     GameTimer();
 
     void Reset();
     void Tick();
 
-    float DeltaTime() const;
-    float TotalTime() const;
+    float DeltaTime() const { return m_deltaTime; }
+    float TotalTime() const { return (float)m_totalTime; }
 
 private:
-    double  mSecondsPerCount = 0.0;
-    double  mDeltaTime = 0.0;
+    double  m_secondsPerCount = 0.0;
+    int64_t m_prevTime = 0;
 
-    __int64 mBaseTime = 0;
-    __int64 mPrevTime = 0;
-    __int64 mCurrTime = 0;
+    double  m_totalTime = 0.0;
+    float   m_deltaTime = 0.0f;
 };
-
-

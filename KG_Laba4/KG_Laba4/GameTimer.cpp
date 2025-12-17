@@ -1,39 +1,33 @@
 #include "GameTimer.h"
+#include <windows.h>
 
 GameTimer::GameTimer()
 {
-    __int64 countsPerSec = 0;
+    int64_t countsPerSec = 0;
     QueryPerformanceFrequency((LARGE_INTEGER*)&countsPerSec);
-    mSecondsPerCount = 1.0 / (double)countsPerSec;
+    m_secondsPerCount = 1.0 / (double)countsPerSec;
+    Reset();
 }
 
 void GameTimer::Reset()
 {
-    __int64 currTime = 0;
-    QueryPerformanceCounter((LARGE_INTEGER*)&currTime);
-
-    mBaseTime = currTime;
-    mPrevTime = currTime;
-    mCurrTime = currTime;
+    int64_t t = 0;
+    QueryPerformanceCounter((LARGE_INTEGER*)&t);
+    m_prevTime = t;
+    m_totalTime = 0.0;
+    m_deltaTime = 0.0f;
 }
 
 void GameTimer::Tick()
 {
-    QueryPerformanceCounter((LARGE_INTEGER*)&mCurrTime);
+    int64_t t = 0;
+    QueryPerformanceCounter((LARGE_INTEGER*)&t);
 
-    mDeltaTime = (mCurrTime - mPrevTime) * mSecondsPerCount;
-    mPrevTime = mCurrTime;
+    double dt = (t - m_prevTime) * m_secondsPerCount;
+    m_prevTime = t;
 
-    if (mDeltaTime < 0.0)
-        mDeltaTime = 0.0;
-}
+    if (dt < 0.0) dt = 0.0;
 
-float GameTimer::DeltaTime() const
-{
-    return (float)mDeltaTime;
-}
-
-float GameTimer::TotalTime() const
-{
-    return (float)((mCurrTime - mBaseTime) * mSecondsPerCount);
+    m_deltaTime = (float)dt;
+    m_totalTime += dt;
 }
