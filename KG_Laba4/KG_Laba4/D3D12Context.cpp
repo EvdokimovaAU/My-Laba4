@@ -195,8 +195,8 @@ void D3D12Context::Render(float r, float g, float b, float a)
 void D3D12Context::UpdateCB()
 {
     XMMATRIX world =
-        XMMatrixRotationY(m_rotationT) *
-        XMMatrixRotationX(m_rotationT * 0.5f);
+        XMMatrixRotationY(XMConvertToRadians(30.0f)) *   // поворот вбок
+        XMMatrixRotationX(XMConvertToRadians(0.0f));
 
     XMMATRIX view =
         XMMatrixLookAtLH(
