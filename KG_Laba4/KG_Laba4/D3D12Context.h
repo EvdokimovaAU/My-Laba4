@@ -19,6 +19,7 @@ struct PerObjectCB
 class D3D12Context
 {
 public:
+    
     bool Initialize(HWND hwnd, UINT width, UINT height);
     void Shutdown();
 
@@ -26,6 +27,7 @@ public:
     void SetRotation(float t);
 
 private:
+    bool CreateSponzaTestModel();
     bool CreateDevice();
     bool CreateCommandObjects();
     bool CreateSwapChain(HWND hwnd);

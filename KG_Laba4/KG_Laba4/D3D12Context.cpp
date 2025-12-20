@@ -1,8 +1,14 @@
-#include "D3D12Context.h"
+﻿#include "D3D12Context.h"
 
 #include <d3dcompiler.h>
 #include <vector>
 #include <cstring>
+
+#include <fstream>
+#include <sstream>
+#include <string>
+#include <algorithm>
+
 
 #pragma comment(lib,"d3d12.lib")
 #pragma comment(lib,"dxgi.lib")
@@ -124,7 +130,7 @@ void D3D12Context::Render(float r, float g, float b, float a)
         m_rtvHeap->GetCPUDescriptorHandleForHeapStart();
     rtv.ptr += SIZE_T(m_frameIndex) * SIZE_T(m_rtvDescriptorSize);
 
-    // DSV handle (�����: ����������!)
+    // DSV handle (ВАЖНО: переменная!)
     D3D12_CPU_DESCRIPTOR_HANDLE dsv =
         m_dsvHeap->GetCPUDescriptorHandleForHeapStart();
 
@@ -194,22 +200,24 @@ void D3D12Context::Render(float r, float g, float b, float a)
 
 void D3D12Context::UpdateCB()
 {
-    XMMATRIX world =
-        XMMatrixRotationY(XMConvertToRadians(30.0f)) *   // ������� ����
-        XMMatrixRotationX(XMConvertToRadians(0.0f));
+    // Вращение модели
+    static float rotation = 0.0f;
+    rotation += 0.5f;  // Медленное вращение
 
-    XMMATRIX view =
-        XMMatrixLookAtLH(
-            XMVectorSet(0.0f, 0.0f, -5.0f, 1.0f), // ������
-            XMVectorZero(),                     // ����
-            XMVectorSet(0.0f, 1.0f, 0.0f, 0.0f));
+    XMMATRIX world = XMMatrixRotationY(XMConvertToRadians(rotation));
 
-    XMMATRIX proj =
-        XMMatrixPerspectiveFovLH(
-            XM_PIDIV4,
-            (float)m_width / (float)m_height,
-            0.1f,
-            100.0f);
+    // Камера для обзора спонзы (сверху и сзади)
+    XMMATRIX view = XMMatrixLookAtLH(
+        XMVectorSet(0.0f, 10.0f, -20.0f, 1.0f),  // Камера: сверху-сзади
+        XMVectorSet(0.0f, 5.0f, 0.0f, 1.0f),     // Смотрим на центр модели
+        XMVectorSet(0.0f, 1.0f, 0.0f, 0.0f));    // Вверх
+
+    // Широкоугольная перспектива для лучшего обзора
+    XMMATRIX proj = XMMatrixPerspectiveFovLH(
+        XM_PIDIV4,                          // 45°
+        (float)m_width / (float)m_height,
+        0.1f,                               // Ближняя плоскость
+        100.0f);                            // Дальняя плоскость
 
     XMStoreFloat4x4(&m_cbData.World, XMMatrixTranspose(world));
     XMStoreFloat4x4(&m_cbData.View, XMMatrixTranspose(view));
@@ -529,40 +537,209 @@ bool D3D12Context::CreatePipelineState()
 
 bool D3D12Context::CreateGeometry()
 {
-    struct V { XMFLOAT3 p; XMFLOAT3 n; };
+    OutputDebugStringA("[D3D12] CreateGeometry: Начинаю загрузку спонзы...\n");
 
-    std::vector<V> vertices =
-    {
-        // +Z
-        {{-1,-1, 1},{0,0,1}}, {{-1, 1, 1},{0,0,1}}, {{ 1, 1, 1},{0,0,1}}, {{ 1,-1, 1},{0,0,1}},
-        // -Z
-        {{ 1,-1,-1},{0,0,-1}}, {{ 1, 1,-1},{0,0,-1}}, {{-1, 1,-1},{0,0,-1}}, {{-1,-1,-1},{0,0,-1}},
-        // +Y
-        {{-1, 1, 1},{0,1,0}}, {{-1, 1,-1},{0,1,0}}, {{ 1, 1,-1},{0,1,0}}, {{ 1, 1, 1},{0,1,0}},
-        // -Y
-        {{-1,-1,-1},{0,-1,0}}, {{-1,-1, 1},{0,-1,0}}, {{ 1,-1, 1},{0,-1,0}}, {{ 1,-1,-1},{0,-1,0}},
-        // +X
-        {{ 1,-1, 1},{1,0,0}}, {{ 1, 1, 1},{1,0,0}}, {{ 1, 1,-1},{1,0,0}}, {{ 1,-1,-1},{1,0,0}},
-        // -X
-        {{-1,-1,-1},{-1,0,0}}, {{-1, 1,-1},{-1,0,0}}, {{-1, 1, 1},{-1,0,0}}, {{-1,-1, 1},{-1,0,0}},
+    // ============= ДИАГНОСТИКА ПУТЕЙ =============
+    // 1. Получаем путь к исполняемому файлу
+    wchar_t exePath[MAX_PATH] = { 0 };
+    if (!GetModuleFileNameW(nullptr, exePath, MAX_PATH)) {
+        MessageBoxW(nullptr, L"Не удалось получить путь к exe", L"Ошибка", MB_OK);
+        return false;
+    }
+
+    // 2. Получаем папку с exe
+    std::wstring exeDir = exePath;
+    size_t lastSlash = exeDir.find_last_of(L"\\/");
+    if (lastSlash == std::wstring::npos) {
+        MessageBoxW(nullptr, L"Неверный путь к exe", L"Ошибка", MB_OK);
+        return false;
+    }
+
+    exeDir = exeDir.substr(0, lastSlash + 1);
+
+    // 3. Получаем текущую рабочую директорию
+    wchar_t currentDir[MAX_PATH] = { 0 };
+    GetCurrentDirectoryW(MAX_PATH, currentDir);
+
+    // 4. Формируем полный путь к sponza.obj
+    std::wstring objPathW = exeDir + L"sponza.obj";
+
+    // 5. Показываем всю информацию
+    std::wstring infoMsg = L"ПУТИ ПОИСКА ФАЙЛА:\n\n";
+    infoMsg += L"1. Путь к exe-файлу:\n" + std::wstring(exePath) + L"\n\n";
+    infoMsg += L"2. Папка с exe:\n" + exeDir + L"\n\n";
+    infoMsg += L"3. Текущая рабочая папка:\n" + std::wstring(currentDir) + L"\n\n";
+    infoMsg += L"4. Ищем файл здесь:\n" + objPathW + L"\n\n";
+
+    // 6. Проверяем существование файла
+    std::ifstream testFile(objPathW);
+    if (testFile.good()) {
+        testFile.close();
+        infoMsg += L"✓ ФАЙЛ НАЙДЕН!\n";
+    }
+    else {
+        infoMsg += L"✗ ФАЙЛ НЕ НАЙДЕН!\n\n";
+
+        // Проверяем права доступа к папке
+        WIN32_FIND_DATAW findData;
+        HANDLE findHandle = FindFirstFileW(objPathW.c_str(), &findData);
+        if (findHandle != INVALID_HANDLE_VALUE) {
+            infoMsg += L"Но FindFirstFile нашел его! Размер: " +
+                std::to_wstring(findData.nFileSizeLow) + L" байт\n";
+            FindClose(findHandle);
+        }
+        else {
+            DWORD error = GetLastError();
+            infoMsg += L"FindFirstFile ошибка: " + std::to_wstring(error) + L"\n";
+        }
+    }
+
+    // 7. Проверяем альтернативные варианты
+    std::vector<std::wstring> alternativePaths;
+
+    // Создаем пути в разных форматах
+    std::wstring altPath1 = exeDir + L"sponza.obj";
+    std::wstring altPath2 = exeDir + L"SPONZA.OBJ";
+    std::wstring altPath3 = exeDir + L"Sponza.obj";
+    std::wstring altPath4 = std::wstring(currentDir) + L"\\sponza.obj";
+    std::wstring altPath5 = std::wstring(currentDir) + L"\\SPONZA.OBJ";
+
+    alternativePaths.push_back(altPath1);
+    alternativePaths.push_back(altPath2);
+    alternativePaths.push_back(altPath3);
+    alternativePaths.push_back(altPath4);
+    alternativePaths.push_back(altPath5);
+
+    infoMsg += L"\nАЛЬТЕРНАТИВНЫЕ ПУТИ:\n";
+    for (size_t i = 0; i < alternativePaths.size(); ++i) {
+        std::ifstream altFile(alternativePaths[i]);
+        if (altFile.good()) {
+            altFile.close();
+            infoMsg += L"✓ " + alternativePaths[i] + L" - НАЙДЕН!\n";
+            objPathW = alternativePaths[i];
+            break;
+        }
+        else {
+            infoMsg += L"✗ " + alternativePaths[i] + L"\n";
+        }
+    }
+
+    // 8. Показываем диалог с информацией
+    int result = MessageBoxW(nullptr, infoMsg.c_str(), L"Диагностика путей", MB_OKCANCEL);
+    if (result == IDCANCEL) {
+        return false;
+    }
+
+    // 9. Проверяем файл окончательно
+    std::ifstream finalTest(objPathW);
+    if (!finalTest.good()) {
+        MessageBoxW(nullptr, L"Файл sponza.obj не найден!\nИспользую тестовую модель.", L"Ошибка", MB_OK);
+
+        // Создаем тестовую спонзу (большую пирамиду)
+        return CreateSponzaTestModel();
+    }
+    finalTest.close();
+
+    // ============= УСПЕШНО НАЙДЕН ФАЙЛ =============
+    std::wstring successMsg = L"✓ ФАЙЛ НАЙДЕН!\n\nПуть: " + objPathW + L"\n\nЗагружаю...";
+    MessageBoxW(nullptr, successMsg.c_str(), L"Успех", MB_OK);
+
+    // ============= ЗАГРУЗКА РЕАЛЬНОГО OBJ =============
+    // TODO: Здесь добавьте код загрузки реального OBJ файла
+    // Пока используем тестовую модель
+    return CreateSponzaTestModel();
+}
+
+bool D3D12Context::CreateSponzaTestModel()
+{
+    OutputDebugStringA("[D3D12] Создаю тестовую модель спонзы...\n");
+
+    // Структура вершины
+    struct SimpleVertex {
+        XMFLOAT3 position;
+        XMFLOAT3 normal;
     };
 
-    std::vector<uint16_t> indices =
-    {
-        0,1,2, 0,2,3,
-        4,5,6, 4,6,7,
-        8,9,10, 8,10,11,
-        12,13,14, 12,14,15,
-        16,17,18, 16,18,19,
-        20,21,22, 20,22,23
-    };
+    std::vector<SimpleVertex> vertices;
+    std::vector<uint32_t> indices;
+
+    // Создаем большую модель спонзы (упрощенную)
+    // Основание (прямоугольник)
+    float width = 40.0f;
+    float length = 60.0f;
+    float height = 30.0f;
+
+    // Основание (4 вершины)
+    vertices.push_back({ {-width / 2, 0.0f, -length / 2}, {0.0f, 1.0f, 0.0f} }); // 0
+    vertices.push_back({ {width / 2, 0.0f, -length / 2}, {0.0f, 1.0f, 0.0f} });  // 1
+    vertices.push_back({ {width / 2, 0.0f, length / 2}, {0.0f, 1.0f, 0.0f} });   // 2
+    vertices.push_back({ {-width / 2, 0.0f, length / 2}, {0.0f, 1.0f, 0.0f} });  // 3
+
+    // Стены (8 вершин)
+    vertices.push_back({ {-width / 2, height, -length / 2}, {0.0f, 0.0f, 1.0f} }); // 4
+    vertices.push_back({ {width / 2, height, -length / 2}, {0.0f, 0.0f, 1.0f} });  // 5
+    vertices.push_back({ {width / 2, height, length / 2}, {0.0f, 0.0f, 1.0f} });   // 6
+    vertices.push_back({ {-width / 2, height, length / 2}, {0.0f, 0.0f, 1.0f} });  // 7
+
+    // Колонны (4 вершины)
+    vertices.push_back({ {-width / 3, height * 1.5f, -length / 3}, {1.0f, 0.0f, 0.0f} }); // 8
+    vertices.push_back({ {width / 3, height * 1.5f, -length / 3}, {1.0f, 0.0f, 0.0f} });  // 9
+    vertices.push_back({ {width / 3, height * 1.5f, length / 3}, {1.0f, 0.0f, 0.0f} });   // 10
+    vertices.push_back({ {-width / 3, height * 1.5f, length / 3}, {1.0f, 0.0f, 0.0f} });  // 11
+
+    // Крыша (4 вершины)
+    vertices.push_back({ {-width / 1.5f, height * 2.0f, -length / 1.5f}, {0.0f, 1.0f, 1.0f} }); // 12
+    vertices.push_back({ {width / 1.5f, height * 2.0f, -length / 1.5f}, {0.0f, 1.0f, 1.0f} });  // 13
+    vertices.push_back({ {width / 1.5f, height * 2.0f, length / 1.5f}, {0.0f, 1.0f, 1.0f} });   // 14
+    vertices.push_back({ {-width / 1.5f, height * 2.0f, length / 1.5f}, {0.0f, 1.0f, 1.0f} });  // 15
+
+    // Индексы (много треугольников)
+    // Основание
+    indices.insert(indices.end(), { 0, 1, 2, 0, 2, 3 });
+
+    // Стены
+    indices.insert(indices.end(), { 0, 4, 5, 0, 5, 1 });  // Передняя
+    indices.insert(indices.end(), { 1, 5, 6, 1, 6, 2 });  // Правая
+    indices.insert(indices.end(), { 2, 6, 7, 2, 7, 3 });  // Задняя
+    indices.insert(indices.end(), { 3, 7, 4, 3, 4, 0 });  // Левая
+
+    // Колонны
+    indices.insert(indices.end(), { 4, 8, 9, 4, 9, 5 });
+    indices.insert(indices.end(), { 5, 9, 10, 5, 10, 6 });
+    indices.insert(indices.end(), { 6, 10, 11, 6, 11, 7 });
+    indices.insert(indices.end(), { 7, 11, 8, 7, 8, 4 });
+
+    // Крыша
+    indices.insert(indices.end(), { 8, 12, 13, 8, 13, 9 });
+    indices.insert(indices.end(), { 9, 13, 14, 9, 14, 10 });
+    indices.insert(indices.end(), { 10, 14, 15, 10, 15, 11 });
+    indices.insert(indices.end(), { 11, 15, 12, 11, 12, 8 });
+
+    // Масштабируем до размера спонзы
+    float scale = 0.05f; // 5% от оригинального размера
+    for (auto& v : vertices) {
+        v.position.x *= scale;
+        v.position.y *= scale;
+        v.position.z *= scale;
+    }
+
+    // Статистика
+    char statsMsg[256];
+    sprintf_s(statsMsg, "Тестовая модель спонзы создана!\nВершин: %zu\nТреугольников: %zu",
+        vertices.size(), indices.size() / 3);
+    MessageBoxA(nullptr, statsMsg, "Готово", MB_OK);
 
     m_indexCount = (UINT)indices.size();
 
-    UINT vbSize = (UINT)(vertices.size() * sizeof(V));
-    UINT ibSize = (UINT)(indices.size() * sizeof(uint16_t));
+    // Создаем буферы
+    return CreateBuffersForModel(vertices, indices);
+}
+bool D3D12Context::CreateBuffersForModel(const std::vector<SimpleVertex>& vertices,
+    const std::vector<uint32_t>& indices)
+{
+    UINT vbSize = (UINT)(vertices.size() * sizeof(SimpleVertex));
+    UINT ibSize = (UINT)(indices.size() * sizeof(uint32_t));
 
-    // Upload heap (���������� ��� ��)
     D3D12_HEAP_PROPERTIES upload{};
     upload.Type = D3D12_HEAP_TYPE_UPLOAD;
 
@@ -575,37 +752,44 @@ bool D3D12Context::CreateGeometry()
     vbDesc.SampleDesc.Count = 1;
     vbDesc.Layout = D3D12_TEXTURE_LAYOUT_ROW_MAJOR;
 
+    // Вершинный буфер
     if (FAILED(m_device->CreateCommittedResource(
         &upload, D3D12_HEAP_FLAG_NONE, &vbDesc,
         D3D12_RESOURCE_STATE_GENERIC_READ, nullptr,
-        IID_PPV_ARGS(&m_vertexBuffer))))
+        IID_PPV_ARGS(&m_vertexBuffer)))) {
+        MessageBoxW(nullptr, L"Ошибка создания вершинного буфера", L"Ошибка", MB_OK);
         return false;
+    }
 
     void* p = nullptr;
     m_vertexBuffer->Map(0, nullptr, &p);
-    std::memcpy(p, vertices.data(), vbSize);
+    memcpy(p, vertices.data(), vbSize);
     m_vertexBuffer->Unmap(0, nullptr);
 
+    // Индексный буфер
     D3D12_RESOURCE_DESC ibDesc = vbDesc;
     ibDesc.Width = ibSize;
 
     if (FAILED(m_device->CreateCommittedResource(
         &upload, D3D12_HEAP_FLAG_NONE, &ibDesc,
         D3D12_RESOURCE_STATE_GENERIC_READ, nullptr,
-        IID_PPV_ARGS(&m_indexBuffer))))
+        IID_PPV_ARGS(&m_indexBuffer)))) {
+        MessageBoxW(nullptr, L"Ошибка создания индексного буфера", L"Ошибка", MB_OK);
         return false;
+    }
 
     m_indexBuffer->Map(0, nullptr, &p);
-    std::memcpy(p, indices.data(), ibSize);
+    memcpy(p, indices.data(), ibSize);
     m_indexBuffer->Unmap(0, nullptr);
 
+    // Настройка View
     m_vbView.BufferLocation = m_vertexBuffer->GetGPUVirtualAddress();
-    m_vbView.StrideInBytes = sizeof(V);
+    m_vbView.StrideInBytes = sizeof(SimpleVertex);
     m_vbView.SizeInBytes = vbSize;
 
     m_ibView.BufferLocation = m_indexBuffer->GetGPUVirtualAddress();
     m_ibView.SizeInBytes = ibSize;
-    m_ibView.Format = DXGI_FORMAT_R16_UINT;
+    m_ibView.Format = DXGI_FORMAT_R32_UINT;
 
     return true;
 }
